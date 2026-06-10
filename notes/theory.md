@@ -136,6 +136,24 @@ small but persistent in sign; SGD's step length scales with gradient magnitude a
 therefore mostly ignores it; Adam normalizes per-coordinate magnitude away and
 pursues the persistent direction indefinitely.
 
+## 4.1 Two norm-growth channels: advection and diffusion
+(added 2026-06-10 after E3; see reports/e3_optimizer.md)
+
+For an update ΔW at W, the norm change splits exactly:
+
+    ‖W + ΔW‖² − ‖W‖² = 2⟨W, ΔW⟩ + ‖ΔW‖²
+                      = 2‖W‖·(radial displacement) + (step energy).
+
+The first term is **directed** (advection): signed, gradient-driven, what the
+post-separation analysis of §2 predicts. The second is **diffusive**: always
+≥ 0, driven by step energy regardless of direction — tangential churn in high
+dimension inflates the norm by Pythagoras. ρ_disp measures the share of the
+displacement that is radial; Δ‖W‖²/epoch measures total growth. E3's finding:
+SGD grows the norm by advection (ρ_disp ≈ 0.8), Adam mostly by diffusion
+(ρ_disp ≈ 0.003 at lr 1e-3 while growing ‖W‖² 2.5× faster than SGD). One
+pathology, two transport mechanisms; fixes can suppress one channel and not
+the other (P11).
+
 ## 5. What "structure" means (invariants table)
 
 Quantities unchanged by motion along the global scale direction W → αW, α > 0:

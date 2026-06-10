@@ -95,6 +95,23 @@ sufficient for calibration.
 
 ---
 
+## Post-registration additions (each registered before its experiment ran)
+
+**P11 (channel suppression; registered 2026-06-10 after E1–E3, before any
+non-smoke E4 run).** E3 found two norm-growth channels: directed radial motion
+(SGD-like advection) and tangential diffusion (Adam-like; ‖W‖² grows by
+Pythagoras). For E4 (all arms SGD+momentum):
+(a) the norm-bounding fixes — LogitNorm and weight decay — reduce integrated
+radial motion R below baseline by the largest margins;
+(b) the learned-then-frozen **temperature arm is the predicted outlier** in
+the P10 scatter: it improves ECE while reducing R least among effective fixes,
+because dividing logits by a learned T cancels the *effect* of scale on the
+loss without suppressing ‖z‖ growth itself;
+(c) consequently the P10 Spearman correlation computed without the temperature
+arm exceeds the correlation with it.
+*Falsified if* the temperature arm reduces R as much as LogitNorm/weight decay,
+or sits on the same regression line as the other arms.
+
 ## Amendment log
 
 (Untouched until experiments run. Any change to a prediction after its experiment

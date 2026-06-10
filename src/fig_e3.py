@@ -68,7 +68,7 @@ fig.savefig("reports/fig_e3_optimizer.png", dpi=180)
 print("wrote reports/fig_e3_optimizer.png")
 
 print(f"\n{'opt':<7}{'lr':<9}{'rho_disp lastq':<17}{'rho_step lastq':<17}"
-      f"{'|W| end':<9}{'test acc'}")
+      f"{'|W| end':<9}{'d|W|2/ep':<10}{'test acc'}")
 for (opt, lr), ms in sorted(runs.items()):
     rd = np.array([m["ep_rho_disp_global"] for m in ms])
     rs = np.array([m["rho_step_global"] for m in ms])
@@ -76,5 +76,11 @@ for (opt, lr), ms in sorted(runs.items()):
     qs = rs.shape[1] // 4
     wn = np.array([m["w_norm"][-1] for m in ms])
     ac = np.array([m["ep_test_acc"][-1] for m in ms])
+    # late-training norm-squared growth per epoch: with rho_disp ~ 0 this is
+    # Pythagorean (diffusive) growth, ||W+dW||^2 = ||W||^2 + ||dW||^2
+    spe = len(ms[0]["w_norm"]) // rd.shape[1]
+    d2 = np.array([np.diff(np.array(m["w_norm"][::spe]) ** 2)[-q:].mean()
+                   for m in ms])
     print(f"{opt:<7}{lr:<9g}{rd[:, -q:].mean():.4f}+-{rd[:, -q:].mean(1).std():.4f}  "
-          f"{rs[:, -qs:].mean():.5f}        {wn.mean():<9.2f}{ac.mean():.4f}")
+          f"{rs[:, -qs:].mean():.5f}        {wn.mean():<9.2f}"
+          f"{d2.mean():<10.4f}{ac.mean():.4f}")
