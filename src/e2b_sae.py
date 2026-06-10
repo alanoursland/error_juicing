@@ -152,7 +152,7 @@ def main():
     acc = probe_accuracy(ftr, ytr, fte, yte)
     print(f"probe accuracy: {acc:.4f}")
 
-    tag = f"e2b_{args.arm}_{args.optimizer}_seed{args.seed}"
+    tag = f"e2b_{args.arm}_{args.optimizer}_lr{lr:g}_seed{args.seed}"
     save_json(f"{args.out.rstrip('/')}/{tag}.json",
               {"config": {**vars(args), "lr": lr}, "metrics": m,
                "probe_acc": acc})
