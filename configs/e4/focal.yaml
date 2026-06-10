@@ -1,0 +1,8 @@
+# Focal loss gamma = 3 (Mukhoti et al. 2020).
+arm: focal
+loss: focal
+gamma: 3.0
+epochs: 160
+batch: 128
+lr: 0.1
+weight_decay: 0.0

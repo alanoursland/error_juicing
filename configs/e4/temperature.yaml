@@ -1,0 +1,9 @@
+# Learned-then-frozen temperature: logits / exp(log_t), trained jointly for the
+# first half of training, frozen for the second half.
+arm: temperature
+loss: temperature
+temp_freeze_frac: 0.5
+epochs: 160
+batch: 128
+lr: 0.1
+weight_decay: 0.0

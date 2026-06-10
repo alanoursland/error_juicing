@@ -100,3 +100,24 @@ sufficient for calibration.
 (Untouched until experiments run. Any change to a prediction after its experiment
 started is recorded here with a date and reason; the original text above is never
 edited.)
+
+**A1 (2026-06-10, after the first E1 run, before analysis).** P2 and P4 were
+written with the per-step minibatch ρ in mind. The first E1 run showed per-step
+minibatch ρ_global ≈ 0.001–0.004 at zero train error — only a few times the
+chance level 1/(K·d) ≈ 4e-4 — while ‖W‖_F grew steadily (3.9 → ~11). Diagnosis,
+reached before further analysis: minibatch gradient noise is predominantly
+tangential and unbiased (it cancels across steps), while the radial component is
+small but consistently signed (it accumulates). The expected per-step loss change
+is first-order in the **full-batch** gradient (E[ΔL] ≈ −η⟨∇L_full, E G_batch⟩ =
+−η‖∇L_full‖²), so the radial share of expected loss reduction is ρ of the
+full-batch gradient, not of the minibatch gradient. E1 and E3 therefore
+additionally log, per epoch: (i) ρ of the closed-form full-train-set head
+gradient, (ii) ρ of the epoch displacement W_end − W_start. P2 and P4 are
+evaluated on estimator (i) (P4 also on (ii)); the per-step minibatch curves are
+retained and reported as the noise-floor contrast. The per-step estimator's
+failure to show the effect is itself a result (reported in E1's lab report), not
+a falsification of P2/P4, because the registered claims concern where training
+*reduces loss* and *moves the iterate*, which the aggregate estimators measure
+and the noisy per-step estimator provably understates. Trajectories are
+unaffected: the added logging consumes no randomness; identical seeds reproduce
+the original runs exactly.
