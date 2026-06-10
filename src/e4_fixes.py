@@ -155,22 +155,22 @@ def main():
         start_epoch = ck["epoch"] + 1
         print(f"resumed {tag} at epoch {start_epoch}", flush=True)
 
-    # wall-clock estimate: time a few batches, extrapolate
-    model.train()
-    it = iter(ltr)
-    xb, yb = next(it)
-    xb, yb = xb.to(dev), yb.to(dev)
-    for _ in range(2):  # warmup
-        opt.zero_grad(); loss_fn(model(xb), yb).backward(); opt.step()
-    t = time.time()
-    for _ in range(5):
-        opt.zero_grad(); loss_fn(model(xb), yb).backward(); opt.step()
-    per_step = (time.time() - t) / 5
-    est = per_step * len(ltr) * (epochs - start_epoch) * 1.15  # +eval overhead
-    print(f"{tag}: ~{per_step*1000:.0f} ms/step, estimated wall-clock "
-          f"{est/3600:.2f} h for {epochs - start_epoch} epochs", flush=True)
-    # the timing batches perturbed the model; restart cleanly unless resuming
+    # wall-clock estimate: time a few batches, extrapolate. Fresh starts only:
+    # the timing steps perturb the model, and only a fresh start can rebuild it.
     if start_epoch == 0:
+        model.train()
+        xb, yb = next(iter(ltr))
+        xb, yb = xb.to(dev), yb.to(dev)
+        for _ in range(2):  # warmup
+            opt.zero_grad(); loss_fn(model(xb), yb).backward(); opt.step()
+        t = time.time()
+        for _ in range(5):
+            opt.zero_grad(); loss_fn(model(xb), yb).backward(); opt.step()
+        per_step = (time.time() - t) / 5
+        est = per_step * len(ltr) * epochs * 1.15  # +eval overhead
+        print(f"{tag}: ~{per_step*1000:.0f} ms/step, estimated wall-clock "
+              f"{est/3600:.2f} h for {epochs} epochs", flush=True)
+        # rebuild cleanly: the timing batches must not affect the run
         set_seed(args.seed)
         model = make_resnet18().to(dev)
         temp_param = nn.Parameter(torch.zeros((), device=dev))
