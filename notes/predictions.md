@@ -101,6 +101,22 @@ sufficient for calibration.
 started is recorded here with a date and reason; the original text above is never
 edited.)
 
+**A2 (2026-06-10, after the first E2 grid, before its report).** The first E2
+grid (baseline/row/global × SGD/Adam) showed that head-only constraints leak:
+SGD plateaus at a structural floor (train loss 0.013 vs 0.0007 baseline) with
+ECE improved ~65%, but Adam under either head constraint reaches *lower* train
+loss than its own baseline (1e-4 vs 6.5e-3) — the homogeneous body
+(Linear+ReLU) re-creates the scale DOF and Adam exploits it. This is the
+README's "deep-network scale leakage" risk, already present with one hidden
+layer, and it strengthens the E3 mechanism (Adam pursues scale wherever it
+lives). A fourth arm `full` (head rows unit + body (W1, b1) jointly projected
+to init norm) was added to close the leak; P6/P7 are evaluated on it as well
+as on the original arms, with the head-only arms reported as the leakage
+demonstration. Separately noted: the 2601 Adam-lower-loss anomaly does not
+reproduce at baseline in this supervised CE testbed (SGD's final loss is the
+lower one); P7's premise is specific to the SAE testbed, which is deferred.
+The original P6/P7 text is unchanged above.
+
 **A1 (2026-06-10, after the first E1 run, before analysis).** P2 and P4 were
 written with the per-step minibatch ρ in mind. The first E1 run showed per-step
 minibatch ρ_global ≈ 0.001–0.004 at zero train error — only a few times the

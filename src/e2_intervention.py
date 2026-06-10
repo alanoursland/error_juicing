@@ -8,6 +8,11 @@ distinction (README), plus baseline, crossed with {SGD, Adam}:
   global     ||W||_F projected to sqrt(K) after every step (fixed global
              temperature; sqrt(K) matches the row arm's total Frobenius
              budget so the two arms differ only in per-row freedom)
+  full       row constraint on the head PLUS the body layer's (W1, b1)
+             jointly projected to its init norm. Added after the first grid
+             (amendment A2): head-only constraints leak -- the homogeneous
+             body re-creates the scale DOF, and Adam exploits it to reach
+             lower-than-baseline loss. This arm closes the leak.
 
 Both are post-step projections, NOT weight-norm reparametrization: the radial
 DOF is removed from the iterate without changing the gradient geometry
@@ -46,7 +51,8 @@ from common import (
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--arm", choices=["baseline", "row", "global"], required=True)
+    ap.add_argument("--arm", choices=["baseline", "row", "global", "full"],
+                    required=True)
     ap.add_argument("--optimizer", choices=["sgd", "adam"], required=True)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--epochs", type=int, default=80)
@@ -72,11 +78,30 @@ def main():
     W = model.head.weight
     K = W.shape[0]
 
+    W1 = model.body[1].weight
+    b1 = model.body[1].bias
+
+    def body_norm():
+        return float((W1.detach().norm() ** 2 + b1.detach().norm() ** 2) ** 0.5)
+
+    body_norm0 = body_norm()
+
+    @torch.no_grad()
+    def project_body():
+        s = body_norm0 / body_norm()
+        W1.mul_(s)
+        b1.mul_(s)
+
+    def apply_constraint():
+        if args.arm in ("row", "full"):
+            project_rows_unit(W.data)
+        elif args.arm == "global":
+            project_global_norm(W.data, math.sqrt(K))
+        if args.arm == "full":
+            project_body()
+
     # apply the constraint at init too, so the iterate starts on the manifold
-    if args.arm == "row":
-        project_rows_unit(W.data)
-    elif args.arm == "global":
-        project_global_norm(W.data, math.sqrt(K))
+    apply_constraint()
 
     m = {k: [] for k in [
         "rho_global", "rho_row", "w_norm", "loss",                       # per step
@@ -98,10 +123,7 @@ def main():
             m["w_norm"].append(r5(float(W.detach().norm())))
             m["loss"].append(r5(float(loss)))
             opt.step()
-            if args.arm == "row":
-                project_rows_unit(W.data)
-            elif args.arm == "global":
-                project_global_norm(W.data, math.sqrt(K))
+            apply_constraint()
 
         model.eval()
         with torch.no_grad():

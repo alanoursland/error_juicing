@@ -20,7 +20,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-ARMS = ["baseline", "global", "row"]
+ARMS = ["baseline", "global", "row", "full"]
 OPTS = ["sgd", "adam"]
 
 runs = defaultdict(list)  # (arm, opt) -> [metrics]
@@ -28,6 +28,7 @@ for p in sorted(glob.glob("results/e2/e2_*.json")):
     d = json.load(open(p))
     runs[(d["config"]["arm"], d["config"]["optimizer"])].append(d["metrics"])
 assert runs, "no E2 metrics found"
+ARMS = [a for a in ARMS if any(k[0] == a for k in runs)]
 
 
 def agg(arm, opt, key):
@@ -49,8 +50,8 @@ axA.set_ylabel("final train loss (log)")
 axA.set_title("A. Structural floor and the Adam-SGD gap")
 axA.legend()
 
-for (arm, opt), color in zip(
-        [(a, o) for a in ARMS for o in OPTS], ["C0", "C1", "C2", "C3", "C4", "C5"]):
+PAIR_COLORS = [f"C{i}" for i in range(len(ARMS) * len(OPTS))]
+for (arm, opt), color in zip([(a, o) for a in ARMS for o in OPTS], PAIR_COLORS):
     curves = agg(arm, opt, "ep_train_loss")
     axB.plot(curves.mean(0), color=color, lw=1.4, label=f"{arm}/{opt}")
 axB.set_yscale("log")
@@ -68,8 +69,7 @@ axC.set_ylabel("final test ECE")
 axC.set_title("C. Calibration")
 axC.legend()
 
-for (arm, opt), color in zip(
-        [(a, o) for a in ARMS for o in OPTS], ["C0", "C1", "C2", "C3", "C4", "C5"]):
+for (arm, opt), color in zip([(a, o) for a in ARMS for o in OPTS], PAIR_COLORS):
     wn = agg(arm, opt, "w_norm")
     axD.plot(wn.mean(0), color=color, lw=1.2, label=f"{arm}/{opt}")
 axD.set_xlabel("step")
