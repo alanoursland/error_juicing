@@ -99,6 +99,8 @@ def main():
     ap.add_argument("--smoke", action="store_true",
                     help="2 epochs on a data subset; pipeline check on CPU")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    ap.add_argument("--workers", type=int, default=8,
+                    help="dataloader workers; lower this if running runs in parallel")
     args = ap.parse_args()
 
     with open(args.config) as f:
@@ -115,9 +117,13 @@ def main():
 
     tr = cifar10(True, args.smoke)
     te = cifar10(False, args.smoke)
-    ltr = torch.utils.data.DataLoader(tr, batch_size=batch, shuffle=True,
-                                      num_workers=2, drop_last=True)
-    lte = torch.utils.data.DataLoader(te, batch_size=512, num_workers=2)
+    pin = dev.type == "cuda"
+    ltr = torch.utils.data.DataLoader(
+        tr, batch_size=batch, shuffle=True, num_workers=args.workers,
+        pin_memory=pin, persistent_workers=args.workers > 0, drop_last=True)
+    lte = torch.utils.data.DataLoader(
+        te, batch_size=512, num_workers=min(2, args.workers), pin_memory=pin,
+        persistent_workers=args.workers > 0)
 
     # fixed probe batch from the train set, eval transform (no augmentation):
     # the probe measures the deployed function, not the augmented view
