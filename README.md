@@ -62,22 +62,41 @@ reports/    Lab reports: one md per experiment — setup, results, interpretatio
 
 Defined precisely in `notes/theory.md` (write this before any code). Summary:
 
-For final-layer weight matrix W producing logits z = Wh + b, the **radial direction**
-at W is the projection of the gradient onto span{W} (per-row or whole-matrix —
-settle in theory.md): movement that rescales outputs. The **tangential component**
-is the orthogonal complement: movement that changes output direction/structure.
+The final layer is **bias-free**: z = Wh. With a bias, scaling W alone gives
+αWh + b, which is not a uniform scaling of z — the exact generator of z → αz is
+joint (W, b) scaling. Dropping the bias makes the decomposition exact, matches
+Soudry et al.’s setting (needed for the special-case argument), and follows the
+bias-free final layers of arXiv:2502.02103. One sensitivity-appendix run keeps the
+bias and projects (W, b) jointly, to show nothing qualitative changes.
+
+The **radial direction** at W is the projection of the gradient onto a scale
+subspace: movement that rescales outputs. The **tangential component** is the
+orthogonal complement: movement that changes output direction/structure. Two scale
+subspaces, both defined in theory.md and both logged:
+
+- **ρ_global** — projection onto the one-dimensional global scale direction
+  (W itself, whole-matrix inner product). Provably structure-preserving: argmax
+  and all relative logits are invariant. Canonical for the thesis and abstract.
+- **ρ_row** — projection onto the per-row radial subspace. Each row is a mixture
+  component, so per-row scale is the per-component volume degree of freedom of
+  the implicit EM framing. Not structure-preserving in general (unequal row
+  scaling can change relative logits).
+
+The global scale direction lies inside the per-row subspace, so ρ_row ≥ ρ_global
+(state the nesting in theory.md). The gap ρ_row − ρ_global measures per-component
+volume drift beyond global temperature — exactly what the implicit EM framing
+predicts should exist, and what InfoMax-style fixes do and don’t control.
 
 Two measurement levels, both implemented:
 
 1. **Weight-level** (exact, used where the final layer is linear): decompose
-   ∇_W L into radial fraction ρ = ‖proj_W ∇‖² / ‖∇‖² per step.
+   ∇_W L into radial fraction ρ = ‖proj ∇‖² / ‖∇‖² per step, for both subspaces.
 1. **Logit-level** (architecture-agnostic, needed because deep homogeneous nets can
-   hide scale in any layer): track ‖z‖ growth, softmax/responsibility entropy, and
-   margin structure directly. Use this for ResNet experiments.
-
-Open design decision (resolve in theory.md before src/): per-row vs whole-matrix
-radial subspace, and whether bias participates. Default position: per-row, bias
-excluded, with a sensitivity check.
+   hide scale in any layer): per-example radial fraction of the logit displacement,
+   (ẑ·dz)² / ‖dz‖², averaged over examples per step (mean-per-step is the stabler
+   estimator). Also track ‖z‖ growth, responsibility entropy (mean per-example
+   softmax entropy on the train set, at eval checkpoints), and margin structure.
+   Use this for ResNet experiments.
 
 ## Experiments
 
@@ -88,18 +107,34 @@ retraining. Pin seeds; ≥3 seeds per configuration; report mean ± std.
 
 ### E1 — The decomposition (thesis figure)
 
-`src/e1_decomposition.py`. MNIST, small MLP + linear head, standard CE, SGD.
-Log per step: radial fraction ρ, ‖W‖ per row, normalized direction drift
-‖Ŵ(t) − Ŵ(t−k)‖, train loss, probe/test accuracy, responsibility entropy.
-**Prediction**: directions converge early and freeze; ‖W‖ grows without bound;
-ρ → 1 as training proceeds; all late loss reduction is radial.
+`src/e1_decomposition.py`. MNIST, small MLP + bias-free linear head, standard CE,
+SGD. Log per step: ρ_global and ρ_row, ‖W‖ per row, normalized direction drift
+‖Ŵ(t) − Ŵ(t−k)‖, train loss, train error, probe/test accuracy; responsibility
+entropy at eval checkpoints.
+**Predictions** (scoped to the post-separation regime): pre-separation, scaling has
+a finite optimum and ρ stays bounded away from 1; once train error ≈ 0, the radial
+direction becomes a pure descent direction and ρ_global inflects upward toward 1.
+The inflection aligned with zero train error is registered as its own numbered
+prediction. ‖W‖ grows without bound; direction drift decays toward zero,
+consistent with Soudry et al.’s O(1/log t) rate — plot drift on a log-t axis so
+the rate comparison is visible. All late loss reduction is radial.
+Thesis figure, two panels: ρ_global(t) and ρ_row(t); ρ_global(t) overlaid with
+train error(t), showing the aligned inflection.
 This plot is the paper. If it fails, stop and rethink before E2–E4.
 
 ### E2 — The intervention (causal proof)
 
-`src/e2_intervention.py`. Same setup, constrain rows of W to unit norm (project after
-each step) and/or fix a global temperature. Also run on the 2601 decoder-free SAE
-as a second testbed (LSE + InfoMax, unsupervised).
+`src/e2_intervention.py`. Same setup, two separate intervention arms mirroring the
+ρ_row/ρ_global distinction: (1) rows of W constrained to unit norm, (2) fixed
+global temperature. Both enforced by post-step projection, not weight-norm
+reparametrization — the point is to remove the radial DOF from the iterate without
+changing the gradient geometry; state this distinction explicitly in the E2 report
+(optimization-side reviewers will ask). Comparing the arms is itself informative:
+if fixed temperature alone closes most of the Adam–SGD gap, juicing is mostly
+global; if unit-norm is needed, per-row drift matters.
+Second testbed: the 2601 decoder-free SAE (LSE + InfoMax, unsupervised). Its code
+lives in a separate repo — resolve the repo name when E2 starts; the primary
+CE-classifier testbed doesn’t depend on it, so E2 starts without it.
 **Predictions**: loss plateaus at the structural floor; the SGD–Adam final-loss gap
 vanishes; accuracy/probe quality unchanged; calibration (ECE) improves substantially.
 If the Adam–SGD gap closes under unit-norm, the 2601 anomaly is fully explained as
@@ -120,15 +155,25 @@ This is the experiment most likely to produce surprises — record them in the r
 `src/e4_fixes.py`. CIFAR-10, ResNet-18 (the calibration community’s testbed), CE loss.
 Five regularizers, one at a time: weight decay, label smoothing, LogitNorm, focal
 loss, learned-then-frozen temperature. Plus unregularized baseline.
-Log: integrated radial motion (logit-level: ∫ d‖z‖), final ECE, test accuracy.
+Log: integrated radial motion — headline metric is the integrated mean-per-step
+radial fraction of dz (the logit-level ρ); ∫ d‖z‖ kept as a secondary curve, since
+it is the LogitNorm literature’s own measurement — plus final ECE, test accuracy.
 **Prediction**: a single scatter — calibration error vs integrated radial motion —
 with a tight correlation, fix-agnostic. Five “unrelated” heuristics are one
 mechanism: approximate volume control.
+Execution contract (runs on local GPU; authored and smoke-tested on CPU first):
+entry point `python src/e4_fixes.py --config configs/e4/<arm>.yaml --seed N
+--out results/e4/`; resumable; metrics flushed per epoch (a killed run loses
+≤ 1 epoch); never writes figures — figure scripts consume `results/e4/*.json`
+only; `--smoke` runs 2 epochs on a data subset for pipeline verification; prints
+estimated wall-clock per arm at startup so the 18 runs can be scheduled.
 
 ## Order of operations
 
-1. `notes/theory.md` — radial/tangential decomposition defined precisely; the
-   per-row vs whole-matrix question settled; predictions numbered.
+1. `notes/theory.md` — radial/tangential decomposition defined precisely,
+   formalizing the settled decisions: bias-free final layer, ρ_global and ρ_row
+   both defined with the nesting ρ_row ≥ ρ_global, predictions scoped to the
+   post-separation regime; predictions numbered.
 1. `notes/related_work.md` — the four literatures, with the position against each:
    what they observed vs what we derive. Soudry et al. needs the most care: their
    theorem (norm diverges, direction → max-margin, linear separable case) is a
@@ -147,6 +192,8 @@ mechanism: approximate volume control.
   radial+tangential norms summing to gradient norm, scale-invariance of the
   tangential component under W → αW. Smoke-test training scripts. Nothing else.
 - Every figure in the paper regenerates from committed metrics via a script.
+- Training runs execute on local GPU hardware (3080 Ti); scripts are authored and
+  smoke-tested on CPU first, and metrics (json/csv) are committed back to the repo.
 - Lab reports record what actually happened, including negative results and
   surprises, before any narrative shaping in the draft.
 - Writing style for notes/draft: declarative, short sentences, predictions stated
@@ -157,8 +204,11 @@ mechanism: approximate volume control.
 ## Known risks
 
 - **Novelty pressure from Soudry et al.**: E1 alone reproduces (empirically) what
-  they proved theoretically for linear models. The paper’s weight rests on E2–E4:
-  the causal intervention, the optimizer asymmetry, and the unification of fixes.
+  they proved theoretically for linear models. Frame this as confirmation, not
+  liability: E1 reproduces their rate in the linear case (drift on a log-t axis),
+  then E2–E4 go where the theorem doesn’t — the causal intervention, the optimizer
+  asymmetry, and the unification of fixes. Never claim directions “freeze”
+  anywhere in the paper.
 - **Deep-network scale leakage**: homogeneity lets scale hide in any layer, so
   weight-level ρ on the last layer undercounts juicing in ResNets. The logit-level
   measurements are the defense; be explicit about this scoping in the draft.

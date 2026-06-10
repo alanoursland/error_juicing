@@ -1,0 +1,7 @@
+# Weight decay 5e-4 (the calibration community's standard value).
+arm: weight_decay
+loss: ce
+epochs: 160
+batch: 128
+lr: 0.1
+weight_decay: 0.0005

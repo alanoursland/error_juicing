@@ -1,0 +1,8 @@
+# LogitNorm (Wei et al. 2022), tau = 0.04 (their CIFAR-10 default).
+arm: logitnorm
+loss: logitnorm
+tau: 0.04
+epochs: 160
+batch: 128
+lr: 0.1
+weight_decay: 0.0

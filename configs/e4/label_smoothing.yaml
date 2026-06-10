@@ -1,0 +1,8 @@
+# Label smoothing 0.1 (Muller et al. 2019 default).
+arm: label_smoothing
+loss: ce
+label_smoothing: 0.1
+epochs: 160
+batch: 128
+lr: 0.1
+weight_decay: 0.0

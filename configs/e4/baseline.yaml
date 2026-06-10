@@ -1,0 +1,7 @@
+# E4 baseline: plain CE, no regularizer. All other arms change exactly one thing.
+arm: baseline
+loss: ce
+epochs: 160
+batch: 128
+lr: 0.1
+weight_decay: 0.0
