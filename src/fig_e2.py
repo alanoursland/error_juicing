@@ -79,6 +79,7 @@ axD.legend(fontsize=8)
 
 fig.tight_layout()
 fig.savefig("reports/fig_e2_intervention.png", dpi=180)
+fig.savefig("reports/fig_e2_intervention.pdf")
 print("wrote reports/fig_e2_intervention.png")
 
 # console summary for the lab report

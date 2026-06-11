@@ -84,6 +84,7 @@ ax2.set_xscale("log")
 
 fig.tight_layout()
 fig.savefig("reports/fig_e1_thesis.png", dpi=180)
+fig.savefig("reports/fig_e1_thesis.pdf")
 print("wrote reports/fig_e1_thesis.png")
 
 # --- supplementary: per-seed estimator curves ---
@@ -102,4 +103,5 @@ np.atleast_1d(axes)[0].set_ylabel(r"$\rho_{global}$")
 np.atleast_1d(axes)[0].legend(fontsize=8)
 fig2.tight_layout()
 fig2.savefig("reports/fig_e1_estimators.png", dpi=180)
+fig2.savefig("reports/fig_e1_estimators.pdf")
 print("wrote reports/fig_e1_estimators.png")

@@ -78,6 +78,7 @@ axD.legend(fontsize=8)
 
 fig.tight_layout()
 fig.savefig("reports/fig_e2b_sae.png", dpi=180)
+fig.savefig("reports/fig_e2b_sae.pdf")
 print("wrote reports/fig_e2b_sae.png")
 
 print(f"\n{'arm':<13}{'opt':<7}{'final loss':<18}{'|Wb| end':<12}"
