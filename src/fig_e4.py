@@ -60,6 +60,7 @@ for ax, t in zip(axes, ["A. P10 scatter (as registered)",
     ax.legend(fontsize=7)
 fig.tight_layout()
 fig.savefig("reports/fig_e4_fixes.png", dpi=180)
+fig.savefig("reports/fig_e4_fixes.pdf")
 print("wrote reports/fig_e4_fixes.png")
 
 arms = sorted(points)

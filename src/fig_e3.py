@@ -65,6 +65,7 @@ axC.legend(fontsize=8)
 
 fig.tight_layout()
 fig.savefig("reports/fig_e3_optimizer.png", dpi=180)
+fig.savefig("reports/fig_e3_optimizer.pdf")
 print("wrote reports/fig_e3_optimizer.png")
 
 print(f"\n{'opt':<7}{'lr':<9}{'rho_disp lastq':<17}{'rho_step lastq':<17}"
