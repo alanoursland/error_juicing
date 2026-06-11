@@ -4,12 +4,17 @@ CIFAR-10, ResNet-18 (CIFAR stem), CE loss, bias-free final layer. Six arms, one
 regularizer at a time (configs/e4/*.yaml): baseline, weight_decay,
 label_smoothing, logitnorm, focal, temperature (learned-then-frozen).
 
+Data pipeline: the whole dataset is cached on the training device and
+augmentation (RandomCrop(32, padding=4) + RandomHorizontalFlip) runs
+vectorized on-device. No DataLoader, no worker processes -- fast everywhere
+and immune to Windows multiprocessing issues.
+
 Logged per epoch: train loss/err, test acc, test ECE; logit-level radial motion
 on a fixed probe batch (theory.md S6): mean rho_logit, the radial-weighted
 increment (whose running sum is the headline metric R), and d||z|| (secondary,
 the LogitNorm literature's measurement).
 
-Prediction addressed: P10.
+Prediction addressed: P10, P11.
 
 Execution contract (README): runs on local GPU; resumable (checkpoint per
 epoch; a killed run loses <= 1 epoch); metrics flushed per epoch; never writes
@@ -32,6 +37,8 @@ import yaml
 from common import ece, logit_radial_step, r5, save_json, set_seed
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
+_MEAN = torch.tensor([0.4914, 0.4822, 0.4465]).view(1, 3, 1, 1)
+_STD = torch.tensor([0.2470, 0.2435, 0.2616]).view(1, 3, 1, 1)
 
 
 def make_resnet18():
@@ -45,23 +52,38 @@ def make_resnet18():
     return m
 
 
-def cifar10(train, smoke=False):
+def cifar10_tensors(smoke, device):
+    """Whole dataset as uint8 tensors on the training device."""
     import torchvision
-    import torchvision.transforms as T
 
-    tf = (T.Compose([T.RandomCrop(32, padding=4), T.RandomHorizontalFlip(),
-                     T.ToTensor(),
-                     T.Normalize((0.4914, 0.4822, 0.4465),
-                                 (0.2470, 0.2435, 0.2616))])
-          if train else
-          T.Compose([T.ToTensor(),
-                     T.Normalize((0.4914, 0.4822, 0.4465),
-                                 (0.2470, 0.2435, 0.2616))]))
-    ds = torchvision.datasets.CIFAR10(_DATA_DIR, train=train, download=True,
-                                      transform=tf)
+    tr = torchvision.datasets.CIFAR10(_DATA_DIR, train=True, download=True)
+    te = torchvision.datasets.CIFAR10(_DATA_DIR, train=False, download=True)
+    xtr = torch.from_numpy(tr.data).permute(0, 3, 1, 2).contiguous()
+    ytr = torch.tensor(tr.targets)
+    xte = torch.from_numpy(te.data).permute(0, 3, 1, 2).contiguous()
+    yte = torch.tensor(te.targets)
     if smoke:
-        ds = torch.utils.data.Subset(ds, range(2000 if train else 1000))
-    return ds
+        xtr, ytr, xte, yte = xtr[:2000], ytr[:2000], xte[:1000], yte[:1000]
+    return (xtr.to(device), ytr.to(device), xte.to(device), yte.to(device))
+
+
+def augment(x01):
+    """RandomCrop(32, padding=4) + RandomHorizontalFlip, vectorized on-device.
+
+    Operates on [0,1] floats pre-normalization, so the zero padding matches
+    torchvision's PIL-level black padding exactly.
+    """
+    B, dev = len(x01), x01.device
+    pad = F.pad(x01, (4, 4, 4, 4))
+    i = torch.randint(0, 9, (B,), device=dev).view(-1, 1, 1, 1)
+    j = torch.randint(0, 9, (B,), device=dev).view(-1, 1, 1, 1)
+    ar = torch.arange(32, device=dev)
+    b = torch.arange(B, device=dev).view(-1, 1, 1, 1)
+    c = torch.arange(3, device=dev).view(1, 3, 1, 1)
+    x = pad[b, c, i + ar.view(1, 1, 32, 1), j + ar.view(1, 1, 1, 32)]
+    flip = torch.rand(B, device=dev) < 0.5
+    x[flip] = x[flip].flip(-1)
+    return x
 
 
 class FocalLoss(nn.Module):
@@ -107,35 +129,34 @@ def main():
     epochs = 2 if args.smoke else cfg.get("epochs", 160)
     batch = cfg.get("batch", 128)
     dev = torch.device(args.device)
+    mean, std = _MEAN.to(dev), _STD.to(dev)
 
     set_seed(args.seed)
     tag = f"e4_{arm}_seed{args.seed}" + ("_smoke" if args.smoke else "")
     out_json = f"{args.out.rstrip('/')}/{tag}.json"
     ckpt_path = f"{args.out.rstrip('/')}/{tag}.ckpt"
 
-    tr = cifar10(True, args.smoke)
-    te = cifar10(False, args.smoke)
-    ltr = torch.utils.data.DataLoader(tr, batch_size=batch, shuffle=True,
-                                      num_workers=2, drop_last=True)
-    lte = torch.utils.data.DataLoader(te, batch_size=512, num_workers=2)
-
-    # fixed probe batch from the train set, eval transform (no augmentation):
-    # the probe measures the deployed function, not the augmented view
-    probe_ds = cifar10(True, smoke=False)
-    probe_ds.transform = cifar10(False, smoke=False).transform
+    xtr, ytr, xte, yte = cifar10_tensors(args.smoke, dev)
+    n = len(xtr)
+    steps_per_epoch = n // batch
+    xte_n = ((xte.float() / 255) - mean) / std
     n_probe = 256 if args.smoke else 512
-    probe_x = torch.stack([probe_ds[i][0] for i in range(n_probe)]).to(dev)
+    probe_x = ((xtr[:n_probe].float() / 255) - mean) / std  # eval view, no aug
 
-    model = make_resnet18().to(dev)
-    temp_param = nn.Parameter(torch.zeros((), device=dev))  # log T, T=1 at init
-    params = [{"params": model.parameters()}]
-    if arm == "temperature":
-        params.append({"params": [temp_param], "weight_decay": 0.0})
-    opt = torch.optim.SGD(params, lr=cfg.get("lr", 0.1), momentum=0.9,
-                          weight_decay=cfg.get("weight_decay", 0.0))
-    sched = torch.optim.lr_scheduler.MultiStepLR(
-        opt, milestones=[int(epochs * 0.5), int(epochs * 0.75)], gamma=0.1)
-    loss_fn = make_loss(cfg, temp_param)
+    def build():
+        set_seed(args.seed)
+        model = make_resnet18().to(dev)
+        temp_param = nn.Parameter(torch.zeros((), device=dev))  # log T
+        params = [{"params": model.parameters()}]
+        if arm == "temperature":
+            params.append({"params": [temp_param], "weight_decay": 0.0})
+        opt = torch.optim.SGD(params, lr=cfg.get("lr", 0.1), momentum=0.9,
+                              weight_decay=cfg.get("weight_decay", 0.0))
+        sched = torch.optim.lr_scheduler.MultiStepLR(
+            opt, milestones=[int(epochs * 0.5), int(epochs * 0.75)], gamma=0.1)
+        return model, temp_param, opt, sched, make_loss(cfg, temp_param)
+
+    model, temp_param, opt, sched, loss_fn = build()
     freeze_at = int(epochs * cfg.get("temp_freeze_frac", 0.5))
 
     m = {k: [] for k in [
@@ -155,42 +176,38 @@ def main():
         start_epoch = ck["epoch"] + 1
         print(f"resumed {tag} at epoch {start_epoch}", flush=True)
 
-    # wall-clock estimate: time a few batches, extrapolate. Fresh starts only:
-    # the timing steps perturb the model, and only a fresh start can rebuild it.
+    # wall-clock estimate: time a few steps, then rebuild cleanly. Fresh
+    # starts only: the timing steps perturb the model.
     if start_epoch == 0:
         model.train()
-        xb, yb = next(iter(ltr))
-        xb, yb = xb.to(dev), yb.to(dev)
+        xb = ((augment(xtr[:batch].float() / 255)) - mean) / std
+        yb = ytr[:batch]
         for _ in range(2):  # warmup
             opt.zero_grad(); loss_fn(model(xb), yb).backward(); opt.step()
+        if dev.type == "cuda":
+            torch.cuda.synchronize()
         t = time.time()
         for _ in range(5):
             opt.zero_grad(); loss_fn(model(xb), yb).backward(); opt.step()
+        if dev.type == "cuda":
+            torch.cuda.synchronize()
         per_step = (time.time() - t) / 5
-        est = per_step * len(ltr) * epochs * 1.15  # +eval overhead
+        est = per_step * steps_per_epoch * epochs * 1.1  # +eval overhead
         print(f"{tag}: ~{per_step*1000:.0f} ms/step, estimated wall-clock "
               f"{est/3600:.2f} h for {epochs} epochs", flush=True)
-        # rebuild cleanly: the timing batches must not affect the run
-        set_seed(args.seed)
-        model = make_resnet18().to(dev)
-        temp_param = nn.Parameter(torch.zeros((), device=dev))
-        params = [{"params": model.parameters()}]
-        if arm == "temperature":
-            params.append({"params": [temp_param], "weight_decay": 0.0})
-        opt = torch.optim.SGD(params, lr=cfg.get("lr", 0.1), momentum=0.9,
-                              weight_decay=cfg.get("weight_decay", 0.0))
-        sched = torch.optim.lr_scheduler.MultiStepLR(
-            opt, milestones=[int(epochs * 0.5), int(epochs * 0.75)], gamma=0.1)
-        loss_fn = make_loss(cfg, temp_param)
+        model, temp_param, opt, sched, loss_fn = build()
 
     t0 = time.time()
     for epoch in range(start_epoch, epochs):
         if arm == "temperature":
             temp_param.requires_grad_(epoch < freeze_at)
         model.train()
+        perm = torch.randperm(n, device=dev)
         run_loss, run_err, count = 0.0, 0, 0
-        for xb, yb in ltr:
-            xb, yb = xb.to(dev), yb.to(dev)
+        for k in range(0, steps_per_epoch * batch, batch):
+            idx = perm[k:k + batch]
+            xb = (augment(xtr[idx].float() / 255) - mean) / std
+            yb = ytr[idx]
             opt.zero_grad()
             z = model(xb)
             loss = loss_fn(z, yb)
@@ -204,10 +221,9 @@ def main():
         model.eval()
         with torch.no_grad():
             z_probe = model(probe_x).cpu()
-            zs, ys = [], []
-            for xb, yb in lte:
-                zs.append(model(xb.to(dev)).cpu()); ys.append(yb)
-            zte, yte = torch.cat(zs), torch.cat(ys)
+            zte = torch.cat([model(xte_n[k:k + 512]).cpu()
+                             for k in range(0, len(xte_n), 512)])
+        yte_c = yte.cpu()
         if z_prev is not None:
             rho_l, weighted, dzn = logit_radial_step(z_prev, z_probe)
             m["ep_rho_logit"].append(r5(rho_l))
@@ -217,8 +233,8 @@ def main():
         m["ep_z_norm"].append(r5(float(z_probe.norm(dim=1).mean())))
         m["ep_train_loss"].append(r5(run_loss / count))
         m["ep_train_err"].append(r5(run_err / count))
-        m["ep_test_acc"].append(r5(float((zte.argmax(1) == yte).float().mean())))
-        m["ep_test_ece"].append(r5(ece(zte, yte)))
+        m["ep_test_acc"].append(r5(float((zte.argmax(1) == yte_c).float().mean())))
+        m["ep_test_ece"].append(r5(ece(zte, yte_c)))
         m["ep_temp"].append(r5(float(temp_param.exp())))
         print(f"{tag} epoch {epoch:3d}  loss {m['ep_train_loss'][-1]:.4f}  "
               f"acc {m['ep_test_acc'][-1]:.4f}  ece {m['ep_test_ece'][-1]:.4f}  "
