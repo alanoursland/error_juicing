@@ -85,7 +85,51 @@ the U-shape: removing one arm doesn't linearize a non-monotone relation.
    verdict depends on the transient, but R's sensitivity to transients is a
    metric-design lesson for the draft's methods section.
 
-## Verdict for the paper
+## Deployment-corrected calibration (added 2026-06-12, ece_corrected.json)
+
+`src/e4_recompute_ece.py` run on the training-machine checkpoints; figure
+`fig_e4_corrected.png` regenerates via `src/fig_e4_corrected.py`.
+
+| arm | deployed ECE | ECE at post-hoc T* | removable | T_learned | T* |
+|---|---|---|---|---|---|
+| baseline | 0.0540 | 0.0064 | 88% | — | 3.53 |
+| focal | 0.0296 | 0.0110 | 63% | — | 1.49 |
+| label_smoothing | 0.0692 | 0.0212 | 69% | — | **0.79** |
+| logitnorm | 0.0808 | 0.0119 | 85% | — | 8.80 |
+| temperature | 0.0497 | 0.0048 | 90% | 2.39 | 8.00 |
+| weight_decay | 0.0278 | 0.0088 | 68% | — | 1.42 |
+
+**P11b — PASS as the predicted outlier.** Deployment-corrected, the
+temperature arm's ECE is 0.0497 (raw evaluation had overstated it at 0.0588),
+modestly better than baseline, while its radial motion is the largest among
+the non-logitnorm arms: it improves calibration without suppressing scale
+growth, exactly the off-the-line behavior P11b registered. Bonus finding —
+**the learned temperature goes stale**: T was learned jointly and frozen at
+mid-training (T = 2.39), but ‖z‖ more than doubled afterwards, so by the end
+the optimal correction was T* = 8.0. A scale fix that stops adapting is
+outrun by continued juicing. Post-hoc correction (Guo et al.) wins precisely
+because it is applied after the growth has stopped.
+
+**One global scalar repairs 63–90% of every arm's miscalibration.** This is
+the strongest unification number in the study, and it independently confirms
+E1/E2's finding that the juicing channel is global (ρ_row − ρ_global ≈ 0.006):
+most of what all six training recipes get wrong about confidence is a single
+temperature.
+
+**The two-sidedness is confirmed on the proper axis; the naive distance law
+is not.** Label smoothing is the only arm with T* < 1 (under-confident); all
+others sit on the over-confident side — the U-shape's sign structure, exactly.
+But deployed ECE is *not* monotone in |log T*| (Spearman 0.37): temperature
+and logitnorm have nearly equal scale gaps (2.08 vs 2.17) and very different
+ECE (0.050 vs 0.081), and label smoothing's small gap (0.23) carries a large
+residual. Two reasons, both visible in the table: ECE's sensitivity to a
+given log-scale gap differs by arm (the confidence distribution's shape sets
+the slope), and label smoothing's damage is partly scale-irreparable — its
+ECE at optimal temperature (0.0212) is double every other arm's, the
+signature of target-shape distortion rather than scale error. The draft's
+claim is therefore stated as: miscalibration decomposes into a dominant,
+sign-two-sided global-scale component and an arm-specific shape residual;
+fixes are a dial on the first and label smoothing also bends the second.
 
 E4 falsifies its registered monotone prediction and replaces it with a
 two-sided law that unifies more of the data: baseline and LogitNorm

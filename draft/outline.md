@@ -180,7 +180,8 @@ as well as too little.
 | 2 | fig_e2_intervention.png | done |
 | 3 | fig_e2b_sae.png | done |
 | 4 | fig_e3_optimizer.png | done |
-| 5 | fig_e4_fixes.png | needs scale-gap panel once ece_corrected.json lands |
+| 5 | fig_e4_fixes.png | done |
+| 6 | fig_e4_corrected.png | done (deployment-corrected ECE, P11b, scale/shape decomposition) |
 
 ## Claims-to-evidence map (for internal checking, drop from the paper)
 
