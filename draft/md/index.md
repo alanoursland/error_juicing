@@ -32,4 +32,5 @@ Radial/Tangential Decomposition of Training Dynamics.*
 | 2 | fig_e2_intervention.{png,pdf} | E2 | done |
 | 3 | fig_e2b_sae.{png,pdf} | E2b | done |
 | 4 | fig_e3_optimizer.{png,pdf} | E3 | done |
-| 5 | fig_e4_fixes.{png,pdf} | E4 | needs scale-gap panel once `results/e4/ece_corrected.json` lands |
+| 5 | fig_e4_fixes.{png,pdf} | E4 | done |
+| 6 | fig_e4_corrected.{png,pdf} | E4 | done |

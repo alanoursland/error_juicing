@@ -18,11 +18,15 @@ is the constructive demonstration. The logit-level measurements are the
 mitigation, not a resolution: they observe the deployed scale without
 locating it. A layer-wise accounting of where scale accumulates is open.
 
-**The U-shape's x-axis was identified post-hoc.** P10's monotone form was
-registered and failed; the deployed-scale-gap reading of E4 is the
-replacement, supported by the data in hand but not pre-registered. The
-deployment-corrected ECE recomputation (pending, Section 7) is the first
-check; a pre-registered replication on a second dataset is the proper one.
+**The U-shape's final form was identified post-hoc.** P10's monotone form
+was registered and failed; the scale/shape decomposition of Section 7 is the
+replacement. The deployment-corrected recomputation confirmed its sign
+structure (label smoothing alone under-confident) and the dominance of the
+global-scale component (63–90% removable by one scalar), but also showed
+that deployed ECE is not monotone in the scale gap |log T*| — the cost of a
+given log-scale error depends on the confidence distribution's shape. None
+of this refined form was pre-registered; a pre-registered replication on a
+second dataset is the proper check.
 
 **Diffusive norm growth lacks a theory.** E3 measured it: Adam at lr 1e-3
 grows ‖W‖² 2.5× faster than SGD while moving 0.3% radially. The dependence of

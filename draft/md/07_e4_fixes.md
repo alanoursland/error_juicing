@@ -64,14 +64,54 @@ the training objective.
 accuracy, controlled ‖z‖ — consistent with E3's observation that decay is the
 one term in the update pointing radially inward in proportion to ‖W‖.
 
-## Pending
+## Deployment-corrected calibration
 
-(*) The temperature arm's ECE is currently computed on raw z, but its
-deployed model includes the learned T — the harness evaluates the wrong
-function for exactly the arm whose mechanism is scale division. The
-deployment-corrected evaluation (`src/e4_recompute_ece.py`: ECE at the
-learned T, post-hoc optimal T*, and the scale gap |log T*| per run) requires
-the training-machine checkpoints; its output (`results/e4/ece_corrected.json`)
-settles P11b and supplies the scale-gap x-axis on which the U-shape should
-become monotone-in-|distance|. The figure and this section will be updated
-when it lands.
+(*) The temperature arm's raw-z ECE evaluated the wrong function: its
+deployed model includes the learned T. Recomputing from checkpoints
+(`src/e4_recompute_ece.py`) gives each arm's deployed ECE, the post-hoc
+optimal temperature T* (Guo et al. 2017), and the ECE remaining at T*.
+
+![Figure 6: deployment-corrected calibration](fig_e4_corrected.png)
+
+**Figure 6.** **A.** Deployed ECE against signed log T*: label smoothing is
+the only arm on the under-confident side (T* = 0.79); all others are
+over-confident. **B.** Deployed ECE vs ECE after one post-hoc global
+temperature; the annotation is the scale-attributable share.
+
+| arm | deployed ECE | ECE at T* | removable | T* |
+|---|---|---|---|---|
+| weight_decay | 0.0278 | 0.0088 | 68% | 1.42 |
+| focal | 0.0296 | 0.0110 | 63% | 1.49 |
+| temperature | 0.0497 | **0.0048** | 90% | 8.00 |
+| baseline | 0.0540 | 0.0064 | 88% | 3.53 |
+| label_smoothing | 0.0692 | 0.0212 | 69% | **0.79** |
+| logitnorm | 0.0808 | 0.0119 | 85% | 8.80 |
+
+Three results. **First, P11b passes as registered**: deployment-corrected,
+the temperature arm improves ECE (0.0497, modestly below baseline) while
+suppressing radial motion not at all — the predicted outlier to any
+R-versus-ECE line. It carries a moral: the arm *learned* T = 2.39 at
+mid-training and froze, but ‖z‖ more than doubled afterwards, leaving the
+optimal correction at T* = 8.0. A scale fix that stops adapting is outrun by
+continued juicing; post-hoc temperature scaling works precisely because it is
+applied after the growth has stopped.
+
+**Second, one global scalar repairs 63–90% of every arm's miscalibration.**
+This is the study's strongest unification number, and it independently
+confirms the weight-space finding that the juicing channel is global
+(ρ_row − ρ_global ≈ 0.006, Sections 3–4): most of what six different training
+recipes get wrong about confidence is a single temperature.
+
+**Third, the two-sidedness is confirmed on the scale axis, and the naive
+distance law is not.** The sign of log T* sorts the arms exactly as the
+U-shape requires — label smoothing alone under-confident, the rest
+over-confident. But deployed ECE is not monotone in |log T*|: equal scale
+gaps carry different ECE (temperature 0.050 vs logitnorm 0.081 at gaps
+2.1–2.2), because the confidence distribution's shape sets how much ECE a
+given log-scale error costs, and because label smoothing's damage is partly
+scale-irreparable — its ECE at optimal temperature (0.0212) is double every
+other arm's, the signature of target-shape distortion rather than scale
+error. The final form of the claim: **miscalibration decomposes into a
+dominant, two-sided global-scale component and an arm-specific shape
+residual; the five fixes are a dial on the first, and label smoothing also
+bends the second.**
