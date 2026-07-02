@@ -146,7 +146,8 @@ class MLP(nn.Module):
 # Data: MNIST fully in memory (fast on CPU; 60k x 784 floats ~ 188 MB)
 # ---------------------------------------------------------------------------
 
-_DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
+# _DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
+_DATA_DIR = "E:/ml_datasets"
 
 
 def mnist_tensors(train=True):

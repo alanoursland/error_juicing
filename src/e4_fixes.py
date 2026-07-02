@@ -36,7 +36,9 @@ import yaml
 
 from common import ece, logit_radial_step, r5, save_json, set_seed
 
-_DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
+# _DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
+_DATA_DIR = "E:/ml_datasets"
+
 _MEAN = torch.tensor([0.4914, 0.4822, 0.4465]).view(1, 3, 1, 1)
 _STD = torch.tensor([0.2470, 0.2435, 0.2616]).view(1, 3, 1, 1)
 
